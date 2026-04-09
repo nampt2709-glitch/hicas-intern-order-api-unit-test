@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using OrderTestingLab.Dtos;
 using OrderTestingLab.Interfaces;
@@ -6,9 +7,11 @@ namespace OrderTestingLab.Controllers;
 
 /// <summary>
 /// API CRUD Order — validation tự động nhờ [ApiController] + DataAnnotations trên DTO/query.
+/// Đọc/ghi/sửa: role User hoặc Admin. Xóa: chỉ Admin.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "User,Admin")]
 public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
@@ -72,8 +75,9 @@ public class OrdersController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>Xóa đơn.</summary>
+    /// <summary>Xóa đơn (chỉ Admin).</summary>
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "Admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)

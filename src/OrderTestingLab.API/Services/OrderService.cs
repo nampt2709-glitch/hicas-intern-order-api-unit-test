@@ -1,3 +1,4 @@
+using AutoMapper;
 using OrderTestingLab.Dtos;
 using OrderTestingLab.Entities;
 using OrderTestingLab.Interfaces;
@@ -5,15 +6,17 @@ using OrderTestingLab.Interfaces;
 namespace OrderTestingLab.Services;
 
 /// <summary>
-/// Áp dụng quy tắc nghiệp vụ: trim tên, email lower-case, tính TotalAmount.
+/// Áp dụng quy tắc nghiệp vụ: trim tên, email lower-case, tính TotalAmount; map entity → DTO qua AutoMapper.
 /// </summary>
 public class OrderService : IOrderService
 {
     private readonly IOrderRepository _orderRepository;
+    private readonly IMapper _mapper;
 
-    public OrderService(IOrderRepository orderRepository)
+    public OrderService(IOrderRepository orderRepository, IMapper mapper)
     {
         _orderRepository = orderRepository;
+        _mapper = mapper;
     }
 
     public async Task<OrderResponse> CreateAsync(CreateOrderRequest request, CancellationToken cancellationToken = default)
@@ -36,19 +39,19 @@ public class OrderService : IOrderService
         };
 
         await _orderRepository.AddAsync(order, cancellationToken);
-        return MapToResponse(order);
+        return _mapper.Map<OrderResponse>(order);
     }
 
     public async Task<OrderResponse?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var order = await _orderRepository.GetByIdAsync(id, cancellationToken);
-        return order is null ? null : MapToResponse(order);
+        return order is null ? null : _mapper.Map<OrderResponse>(order);
     }
 
     public async Task<IReadOnlyList<OrderResponse>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         var list = await _orderRepository.GetAllOrderedByCreatedAtDescAsync(cancellationToken);
-        return list.Select(MapToResponse).ToList();
+        return list.Select(o => _mapper.Map<OrderResponse>(o)).ToList();
     }
 
     public async Task<PagedOrdersResponse> GetPagedAsync(OrderQueryParameters query, CancellationToken cancellationToken = default)
@@ -60,7 +63,7 @@ public class OrderService : IOrderService
         var (items, total) = await _orderRepository.GetPagedOrderedByCreatedAtDescAsync(skip, pageSize, cancellationToken);
         return new PagedOrdersResponse
         {
-            Items = items.Select(MapToResponse).ToList(),
+            Items = items.Select(o => _mapper.Map<OrderResponse>(o)).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = total
@@ -96,19 +99,5 @@ public class OrderService : IOrderService
     public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return _orderRepository.DeleteAsync(id, cancellationToken);
-    }
-
-    private static OrderResponse MapToResponse(Order order)
-    {
-        return new OrderResponse
-        {
-            Id = order.Id,
-            CustomerName = order.CustomerName,
-            Email = order.Email,
-            Quantity = order.Quantity,
-            UnitPrice = order.UnitPrice,
-            TotalAmount = order.TotalAmount,
-            CreatedAt = order.CreatedAt
-        };
     }
 }

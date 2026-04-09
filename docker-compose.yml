@@ -1,0 +1,10 @@
+# Dùng cho dev / CI local: SQL Server giống Testcontainers (Testcontainers tự pull image khi chạy test).
+# Khởi chạy: docker compose up -d
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "OrderTestingLab_Local_123!"
+    ports:
+      - "14333:1433"

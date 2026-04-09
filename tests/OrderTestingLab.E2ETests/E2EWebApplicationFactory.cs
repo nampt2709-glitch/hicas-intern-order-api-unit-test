@@ -1,14 +1,15 @@
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using OrderTestingLab.Persistence;
+using OrderTestingLab.Data;
+using OrderTestingLab.Testing.Common;
 
 namespace OrderTestingLab.E2ETests;
 
 /// <summary>
-/// Host test cho End-to-End: cùng pipeline HTTP thật như integration, nhưng dùng <b>SQLite file trên đĩa</b> (thư mục temp)
-/// để mô phỏng gần hơn môi trường chạy API thật (I/O file, không phải :memory:).
+/// Host test cho End-to-End: pipeline HTTP thật, SQLite file trên đĩa, JWT cấu hình giống integration test.
 /// </summary>
 public class E2EWebApplicationFactory : WebApplicationFactory<Program>, IDisposable
 {
@@ -21,8 +22,17 @@ public class E2EWebApplicationFactory : WebApplicationFactory<Program>, IDisposa
         _databaseFilePath = Path.Combine(root, $"e2e_{Guid.NewGuid():N}.db");
     }
 
-    /// <summary>Đường dẫn file DB (để gỡ lỗi hoặc kiểm tra E2E thủ công nếu cần).</summary>
+    /// <summary>Đường dẫn file DB (gỡ lỗi thủ công nếu cần).</summary>
     public string DatabaseFilePath => _databaseFilePath;
+
+    /// <summary>HttpClient kèm JWT theo role (User/Admin).</summary>
+    public HttpClient CreateClientWithRoles(params string[] roles)
+    {
+        var client = CreateClient();
+        var token = JwtTestTokenFactory.CreateToken(roles);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -52,7 +62,7 @@ public class E2EWebApplicationFactory : WebApplicationFactory<Program>, IDisposa
             }
             catch
             {
-                // Bỏ qua nếu file đang bị khóa ngắn — F.I.R.S.T: không làm fail test vì dọn rác.
+                // Bỏ qua nếu file đang bị khóa ngắn.
             }
         }
 

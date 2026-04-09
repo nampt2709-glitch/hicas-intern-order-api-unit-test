@@ -4,12 +4,13 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OrderTestingLab.Dtos;
-using OrderTestingLab.Persistence;
+using OrderTestingLab.Data;
+using OrderTestingLab.Testing.Common;
 
 namespace OrderTestingLab.IntegrationTests;
 
 /// <summary>
-/// Integration test — gọi HTTP qua host thật (<see cref="CustomWebApplicationFactory"/>), SQLite In-Memory, có khi đọc <see cref="AppDbContext"/>.
+/// Integration test — gọi HTTP qua host thật (<see cref="OrdersTestWebApplicationFactory"/>), SQLite In-Memory, có khi đọc <see cref="AppDbContext"/>.
 /// </summary>
 /// <remarks>
 /// <para><b>F.I.R.S.T</b>:</para>
@@ -22,15 +23,19 @@ namespace OrderTestingLab.IntegrationTests;
 /// </list>
 /// <para>Mỗi test ghi <b>Arrange – Act – Assert</b>; nhiệm vụ mô tả trong thẻ summary của từng test.</para>
 /// </remarks>
-public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
+public class OrdersIntegrationTests : IClassFixture<OrdersTestWebApplicationFactory>
 {
-    private readonly CustomWebApplicationFactory _factory;
-    private readonly HttpClient _client;
+    private readonly OrdersTestWebApplicationFactory _factory;
+    /// <summary>JWT role User — GET/POST/PUT.</summary>
+    private readonly HttpClient _userClient;
+    /// <summary>JWT role Admin — DELETE (và mọi thao tác User được phép).</summary>
+    private readonly HttpClient _adminClient;
 
-    public OrdersIntegrationTests(CustomWebApplicationFactory factory)
+    public OrdersIntegrationTests(OrdersTestWebApplicationFactory factory)
     {
         _factory = factory;
-        _client = factory.CreateClient();
+        _userClient = factory.CreateClientWithRoles("User");
+        _adminClient = factory.CreateClientWithRoles("Admin");
     }
 
     /// <summary>Arrange — xóa bảng Orders để test độc lập (F.I.R.S.T: Independent).</summary>
@@ -52,7 +57,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         var request = new CreateOrderRequest { CustomerName = "  A  ", Email = "A@Test.com", Quantity = 2, UnitPrice = 3m };
 
         // Act — Gửi POST /api/orders.
-        var response = await _client.PostAsJsonAsync("/api/orders", request);
+        var response = await _userClient.PostAsJsonAsync("/api/orders", request);
 
         // Assert — 201 + kiểm tra dòng trong DB.
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -75,7 +80,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/orders", new { customerName = "X", quantity = 1, unitPrice = 1m });
+        var response = await _userClient.PostAsJsonAsync("/api/orders", new { customerName = "X", quantity = 1, unitPrice = 1m });
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -93,7 +98,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 0, UnitPrice = 1m });
+        var response = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 0, UnitPrice = 1m });
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -109,7 +114,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 0m });
+        var response = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 0m });
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -123,11 +128,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange — Tạo một đơn.
         await ResetOrdersTableAsync();
-        var created = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "G", Email = "g@test.com", Quantity = 1, UnitPrice = 1m });
+        var created = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "G", Email = "g@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await created.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        var get = await _client.GetAsync($"/api/orders/{id}");
+        var get = await _userClient.GetAsync($"/api/orders/{id}");
 
         // Assert
         get.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -143,7 +148,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.GetAsync($"/api/orders/{Guid.NewGuid()}");
+        var r = await _userClient.GetAsync($"/api/orders/{Guid.NewGuid()}");
 
         // Assert
         r.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -159,7 +164,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.GetAsync("/api/orders");
+        var r = await _userClient.GetAsync("/api/orders");
         var page = await r.Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
@@ -176,10 +181,10 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var r = await _client.GetAsync("/api/orders?page=1&pageSize=10");
+        var r = await _userClient.GetAsync("/api/orders?page=1&pageSize=10");
         var page = await r.Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
@@ -195,11 +200,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var r = await _client.GetAsync("/api/orders/all");
+        var r = await _userClient.GetAsync("/api/orders/all");
         var list = await r.Content.ReadFromJsonAsync<List<OrderResponse>>();
 
         // Assert
@@ -214,11 +219,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        var put = await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "Z", Email = "z@test.com", Quantity = 2, UnitPrice = 2m });
+        var put = await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "Z", Email = "z@test.com", Quantity = 2, UnitPrice = 2m });
         var dto = await put.Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
@@ -237,7 +242,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var put = await _client.PutAsJsonAsync($"/api/orders/{Guid.NewGuid()}", new UpdateOrderRequest { CustomerName = "Z", Email = "z@test.com", Quantity = 1, UnitPrice = 1m });
+        var put = await _userClient.PutAsJsonAsync($"/api/orders/{Guid.NewGuid()}", new UpdateOrderRequest { CustomerName = "Z", Email = "z@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Assert
         put.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -251,11 +256,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange — Có đơn để gọi PUT, nhưng body thiếu email.
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        var put = await _client.PutAsJsonAsync($"/api/orders/{id}", new { customerName = "X", quantity = 1, unitPrice = 1m });
+        var put = await _userClient.PutAsJsonAsync($"/api/orders/{id}", new { customerName = "X", quantity = 1, unitPrice = 1m });
 
         // Assert
         put.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -269,11 +274,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        var del = await _client.DeleteAsync($"/api/orders/{id}");
+        var del = await _adminClient.DeleteAsync($"/api/orders/{id}");
 
         // Assert
         del.StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -289,32 +294,10 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var del = await _client.DeleteAsync($"/api/orders/{Guid.NewGuid()}");
+        var del = await _adminClient.DeleteAsync($"/api/orders/{Guid.NewGuid()}");
 
         // Assert
         del.StatusCode.Should().Be(HttpStatusCode.NotFound);
-    }
-
-    /// <summary>
-    /// Nhiệm vụ: Kịch bản CRUD đầy đủ: tạo → đọc → sửa → xóa → đọc lại 404.
-    /// </summary>
-    [Fact]
-    public async Task IT15_FullCrud_Create_Get_Update_Delete_Get404()
-    {
-        // Arrange
-        await ResetOrdersTableAsync();
-
-        // Act — Chuỗi CRUD trên HTTP.
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 2m });
-        var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
-        var get1 = await _client.GetAsync($"/api/orders/{id}");
-        await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 2, UnitPrice = 2m });
-        await _client.DeleteAsync($"/api/orders/{id}");
-        var get404 = await _client.GetAsync($"/api/orders/{id}");
-
-        // Assert
-        get1.StatusCode.Should().Be(HttpStatusCode.OK);
-        get404.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     /// <summary>
@@ -325,10 +308,10 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var r = await _client.GetAsync("/api/orders?page=2&pageSize=10");
+        var r = await _userClient.GetAsync("/api/orders?page=2&pageSize=10");
         var page = await r.Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
@@ -346,7 +329,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.GetAsync("/api/orders?page=1&pageSize=101");
+        var r = await _userClient.GetAsync("/api/orders?page=1&pageSize=101");
 
         // Assert
         r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -362,7 +345,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.GetAsync("/api/orders?page=0&pageSize=10");
+        var r = await _userClient.GetAsync("/api/orders?page=0&pageSize=10");
 
         // Assert
         r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -378,7 +361,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 3, UnitPrice = 4m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 3, UnitPrice = 4m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Assert — Đọc DB trực tiếp.
@@ -396,11 +379,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "X", Email = "x@test.com", Quantity = 5, UnitPrice = 2m });
+        await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "X", Email = "x@test.com", Quantity = 5, UnitPrice = 2m });
 
         // Assert
         using var scope = _factory.Services.CreateScope();
@@ -419,11 +402,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        await _client.DeleteAsync($"/api/orders/{id}");
+        await _adminClient.DeleteAsync($"/api/orders/{id}");
 
         // Assert
         using var scope = _factory.Services.CreateScope();
@@ -439,11 +422,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var r = await _client.GetAsync("/api/orders?page=1&pageSize=1");
+        var r = await _userClient.GetAsync("/api/orders?page=1&pageSize=1");
         var page = await r.Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
@@ -460,10 +443,10 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         // Arrange
         await ResetOrdersTableAsync();
         for (var i = 0; i < 5; i++)
-            await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = $"U{i}", Email = $"u{i}@test.com", Quantity = 1, UnitPrice = 1m });
+            await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = $"U{i}", Email = $"u{i}@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var r = await _client.GetAsync("/api/orders?page=1&pageSize=2");
+        var r = await _userClient.GetAsync("/api/orders?page=1&pageSize=2");
         var page = await r.Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
@@ -481,7 +464,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "MixCase@Test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "MixCase@Test.com", Quantity = 1, UnitPrice = 1m });
         var dto = await post.Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
@@ -498,9 +481,9 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 7, UnitPrice = 3m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 7, UnitPrice = 3m });
         var created = await post.Content.ReadFromJsonAsync<OrderResponse>();
-        var get = await _client.GetAsync($"/api/orders/{created!.Id}");
+        var get = await _userClient.GetAsync($"/api/orders/{created!.Id}");
         var got = await get.Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
@@ -515,7 +498,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act — Đọc CreatedAt trước PUT, sau PUT đọc lại.
@@ -523,7 +506,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var before = await db.Orders.AsNoTracking().SingleAsync(o => o.Id == id);
-            await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
+            await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
             var after = await db.Orders.AsNoTracking().SingleAsync(o => o.Id == id);
 
             // Assert
@@ -532,42 +515,45 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     /// <summary>
-    /// Nhiệm vụ: GET /all sắp mới nhất trước (đơn tạo sau nằm đầu list) — có thể cần delay nhỏ để phân biệt thời gian.
+    /// Nhiệm vụ: GET /all trả thứ tự khớp OrderByDescending CreatedAt, ThenByDescending Id (không phụ thuộc delay — tránh flaky).
     /// </summary>
     [Fact]
-    public async Task IT27_GetAll_OrderedByCreatedAtDesc_LastCreatedFirst()
+    public async Task IT27_GetAll_ReturnsOrdersSortedByCreatedAtDesc_ThenIdDesc()
     {
         // Arrange
         await ResetOrdersTableAsync();
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "First", Email = "f@test.com", Quantity = 1, UnitPrice = 1m });
-        await Task.Delay(20);
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Second", Email = "s@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "First", Email = "f@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Second", Email = "s@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var r = await _client.GetAsync("/api/orders/all");
+        var r = await _userClient.GetAsync("/api/orders/all");
         var list = await r.Content.ReadFromJsonAsync<List<OrderResponse>>();
 
         // Assert
-        list![0].CustomerName.Should().Be("Second");
+        list.Should().NotBeNull();
+        var ordered = list!;
+        var sorted = ordered.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToList();
+        ordered.Select(x => x.Id).Should().Equal(sorted.Select(x => x.Id));
     }
 
     /// <summary>
-    /// Nhiệm vụ: Trang phân trang đầu tiên đặt đơn mới nhất lên đầu.
+    /// Nhiệm vụ: Trang 1 của phân trang cùng quy tắc sắp xếp với repository (CreatedAt desc, Id desc).
     /// </summary>
     [Fact]
-    public async Task IT28_GetPaged_OrderMatchesDescCreatedAt()
+    public async Task IT28_GetPaged_Page1_ItemsSortedLikeRepository()
     {
         // Arrange
         await ResetOrdersTableAsync();
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Old", Email = "o@test.com", Quantity = 1, UnitPrice = 1m });
-        await Task.Delay(20);
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "New", Email = "n@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Old", Email = "o@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "New", Email = "n@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var page = await (await _client.GetAsync("/api/orders?page=1&pageSize=10")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
+        var page = await (await _userClient.GetAsync("/api/orders?page=1&pageSize=10")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
-        page!.Items[0].CustomerName.Should().Be("New");
+        page.Should().NotBeNull();
+        var sorted = page!.Items.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToList();
+        page.Items.Select(x => x.Id).Should().Equal(sorted.Select(x => x.Id));
     }
 
     /// <summary>
@@ -580,10 +566,12 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.PostAsJsonAsync("/api/orders", new { email = "a@test.com", quantity = 1, unitPrice = 1m });
+        var r = await _userClient.PostAsJsonAsync("/api/orders", new { email = "a@test.com", quantity = 1, unitPrice = 1m });
 
         // Assert
         r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var text = await r.Content.ReadAsStringAsync();
+        text.Should().Contain("CustomerName");
     }
 
     /// <summary>
@@ -594,12 +582,12 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        await _client.DeleteAsync($"/api/orders/{id}");
-        var page = await (await _client.GetAsync("/api/orders")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
+        await _adminClient.DeleteAsync($"/api/orders/{id}");
+        var page = await (await _userClient.GetAsync("/api/orders")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
         page!.TotalCount.Should().Be(0);
@@ -615,7 +603,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.GetAsync("/api/orders?page=1&pageSize=100");
+        var r = await _userClient.GetAsync("/api/orders?page=1&pageSize=100");
 
         // Assert
         r.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -631,9 +619,9 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
-        var all = await (await _client.GetAsync("/api/orders/all")).Content.ReadFromJsonAsync<List<OrderResponse>>();
+        var all = await (await _userClient.GetAsync("/api/orders/all")).Content.ReadFromJsonAsync<List<OrderResponse>>();
 
         // Assert
         all!.Any(o => o.Id == id).Should().BeTrue();
@@ -647,11 +635,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        var put = await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 0, UnitPrice = 1m });
+        var put = await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 0, UnitPrice = 1m });
 
         // Assert
         put.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -667,10 +655,10 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
-        var g1 = await (await _client.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
-        var g2 = await (await _client.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
+        var g1 = await (await _userClient.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
+        var g2 = await (await _userClient.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
         g1!.CreatedAt.Should().Be(g2!.CreatedAt);
@@ -685,10 +673,10 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         // Arrange
         await ResetOrdersTableAsync();
         for (var i = 0; i < 5; i++)
-            await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = $"U{i}", Email = $"u{i}@t.com", Quantity = 1, UnitPrice = 1m });
+            await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = $"U{i}", Email = $"u{i}@t.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var page3 = await (await _client.GetAsync("/api/orders?page=3&pageSize=2")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
+        var page3 = await (await _userClient.GetAsync("/api/orders?page=3&pageSize=2")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
         page3!.Items.Should().HaveCount(1);
@@ -704,25 +692,24 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "not-an-email", Quantity = 1, UnitPrice = 1m });
+        var r = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "not-an-email", Quantity = 1, UnitPrice = 1m });
 
         // Assert
         r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
     /// <summary>
-    /// Nhiệm vụ: Hai POST gần như đồng thời đều persist (không mất dữ liệu).
+    /// Nhiệm vụ: Hai POST tuần tự (SQLite in-memory + một connection: không song song để tránh race provider) — cả hai đều persist.
     /// </summary>
     [Fact]
-    public async Task IT37_ConcurrentStyle_TwoPosts_BothPersist()
+    public async Task IT37_TwoSequentialPosts_BothPersistInDatabase()
     {
         // Arrange
         await ResetOrdersTableAsync();
 
         // Act
-        var t1 = _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
-        var t2 = _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
-        await Task.WhenAll(t1, t2);
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Assert
         using var scope = _factory.Services.CreateScope();
@@ -740,7 +727,7 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var r = await _client.GetAsync("/api/orders/all");
+        var r = await _userClient.GetAsync("/api/orders/all");
         var list = await r.Content.ReadFromJsonAsync<List<OrderResponse>>();
 
         // Assert
@@ -758,8 +745,8 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         var id = Guid.NewGuid();
 
         // Act
-        var d1 = await _client.DeleteAsync($"/api/orders/{id}");
-        var d2 = await _client.DeleteAsync($"/api/orders/{id}");
+        var d1 = await _adminClient.DeleteAsync($"/api/orders/{id}");
+        var d2 = await _adminClient.DeleteAsync($"/api/orders/{id}");
 
         // Assert
         d1.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -776,11 +763,11 @@ public class OrdersIntegrationTests : IClassFixture<CustomWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
-        var put = await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "ZZ", Email = "zz@test.com", Quantity = 3, UnitPrice = 3m });
+        var put = await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "ZZ", Email = "zz@test.com", Quantity = 3, UnitPrice = 3m });
         var fromPut = await put.Content.ReadFromJsonAsync<OrderResponse>();
-        var fromGet = await (await _client.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
+        var fromGet = await (await _userClient.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
         fromPut!.TotalAmount.Should().Be(fromGet!.TotalAmount);

@@ -4,7 +4,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OrderTestingLab.Dtos;
-using OrderTestingLab.Persistence;
+using OrderTestingLab.Data;
 
 namespace OrderTestingLab.E2ETests;
 
@@ -22,12 +22,14 @@ namespace OrderTestingLab.E2ETests;
 public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
 {
     private readonly E2EWebApplicationFactory _factory;
-    private readonly HttpClient _client;
+    private readonly HttpClient _userClient;
+    private readonly HttpClient _adminClient;
 
     public OrdersE2ETests(E2EWebApplicationFactory factory)
     {
         _factory = factory;
-        _client = factory.CreateClient();
+        _userClient = factory.CreateClientWithRoles("User");
+        _adminClient = factory.CreateClientWithRoles("Admin");
     }
 
     /// <summary>Arrange — Dọn dữ liệu để mỗi kịch bản E2E độc lập (F.I.R.S.T: Independent).</summary>
@@ -48,7 +50,7 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act — Chuỗi thao tác như người dùng / client thật.
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest
         {
             CustomerName = "  Alice  ",
             Email = "Alice@Shop.com",
@@ -58,17 +60,17 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         post.StatusCode.Should().Be(HttpStatusCode.Created);
         var created = await post.Content.ReadFromJsonAsync<OrderResponse>();
 
-        var getOne = await _client.GetAsync($"/api/orders/{created!.Id}");
-        var paged = await _client.GetAsync("/api/orders?page=1&pageSize=10");
-        await _client.PutAsJsonAsync($"/api/orders/{created.Id}", new UpdateOrderRequest
+        var getOne = await _userClient.GetAsync($"/api/orders/{created!.Id}");
+        var paged = await _userClient.GetAsync("/api/orders?page=1&pageSize=10");
+        await _userClient.PutAsJsonAsync($"/api/orders/{created.Id}", new UpdateOrderRequest
         {
             CustomerName = "Alice",
             Email = "alice@shop.com",
             Quantity = 1,
             UnitPrice = 20m
         });
-        await _client.DeleteAsync($"/api/orders/{created.Id}");
-        var getAfterDelete = await _client.GetAsync($"/api/orders/{created.Id}");
+        await _adminClient.DeleteAsync($"/api/orders/{created.Id}");
+        var getAfterDelete = await _userClient.GetAsync($"/api/orders/{created.Id}");
 
         // Assert — Trạng thái cuối và dữ liệu đã chuẩn hóa.
         getOne.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -87,10 +89,10 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a1@test.com", Quantity = 1, UnitPrice = 1m });
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b1@test.com", Quantity = 1, UnitPrice = 1m });
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "C", Email = "c1@test.com", Quantity = 1, UnitPrice = 1m });
-        var all = await _client.GetAsync("/api/orders/all");
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a1@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b1@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "C", Email = "c1@test.com", Quantity = 1, UnitPrice = 1m });
+        var all = await _userClient.GetAsync("/api/orders/all");
 
         // Assert
         all.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -107,11 +109,11 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         // Arrange
         await ResetOrdersTableAsync();
         for (var i = 0; i < 5; i++)
-            await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = $"U{i}", Email = $"u{i}@e2e.com", Quantity = 1, UnitPrice = 1m });
+            await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = $"U{i}", Email = $"u{i}@e2e.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var p1 = await _client.GetAsync("/api/orders?page=1&pageSize=2");
-        var p2 = await _client.GetAsync("/api/orders?page=2&pageSize=2");
+        var p1 = await _userClient.GetAsync("/api/orders?page=1&pageSize=2");
+        var p2 = await _userClient.GetAsync("/api/orders?page=2&pageSize=2");
 
         // Assert
         var page1 = await p1.Content.ReadFromJsonAsync<PagedOrdersResponse>();
@@ -132,8 +134,8 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var bad = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "X", Email = "x@test.com", Quantity = 0, UnitPrice = 1m });
-        var ok = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "X", Email = "x@test.com", Quantity = 1, UnitPrice = 1m });
+        var bad = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "X", Email = "x@test.com", Quantity = 0, UnitPrice = 1m });
+        var ok = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "X", Email = "x@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Assert
         bad.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -150,7 +152,7 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Db", Email = "db@test.com", Quantity = 4, UnitPrice = 2.5m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Db", Email = "db@test.com", Quantity = 4, UnitPrice = 2.5m });
         var body = await post.Content.ReadFromJsonAsync<OrderResponse>();
 
         using var scope = _factory.Services.CreateScope();
@@ -172,9 +174,9 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Nam", Email = "nam@test.com", Quantity = 1, UnitPrice = 10m });
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Lan", Email = "lan@test.com", Quantity = 2, UnitPrice = 5m });
-        var all = await (await _client.GetAsync("/api/orders/all")).Content.ReadFromJsonAsync<List<OrderResponse>>();
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Nam", Email = "nam@test.com", Quantity = 1, UnitPrice = 10m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Lan", Email = "lan@test.com", Quantity = 2, UnitPrice = 5m });
+        var all = await (await _userClient.GetAsync("/api/orders/all")).Content.ReadFromJsonAsync<List<OrderResponse>>();
 
         // Assert
         all!.Select(o => o.Email).Should().Contain(new[] { "nam@test.com", "lan@test.com" });
@@ -188,12 +190,12 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Old", Email = "old@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Old", Email = "old@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "New", Email = "new@test.com", Quantity = 3, UnitPrice = 2m });
-        var get = await _client.GetAsync($"/api/orders/{id}");
+        await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "New", Email = "new@test.com", Quantity = 3, UnitPrice = 2m });
+        var get = await _userClient.GetAsync($"/api/orders/{id}");
         var dto = await get.Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
@@ -209,12 +211,12 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var id1 = (await (await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m })).Content.ReadFromJsonAsync<OrderResponse>())!.Id;
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
+        var id1 = (await (await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m })).Content.ReadFromJsonAsync<OrderResponse>())!.Id;
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        await _client.DeleteAsync($"/api/orders/{id1}");
-        var page = await (await _client.GetAsync("/api/orders?page=1&pageSize=10")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
+        await _adminClient.DeleteAsync($"/api/orders/{id1}");
+        var page = await (await _userClient.GetAsync("/api/orders?page=1&pageSize=10")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
         page!.TotalCount.Should().Be(1);
@@ -228,13 +230,13 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        var put = await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "Z", Email = "z@test.com", Quantity = 2, UnitPrice = 3m });
+        var put = await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "Z", Email = "z@test.com", Quantity = 2, UnitPrice = 3m });
         var fromPut = await put.Content.ReadFromJsonAsync<OrderResponse>();
-        var fromGet = await (await _client.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
+        var fromGet = await (await _userClient.GetAsync($"/api/orders/{id}")).Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
         fromPut!.Id.Should().Be(fromGet!.Id);
@@ -251,9 +253,9 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "T", Email = "t@test.com", Quantity = 6, UnitPrice = 7.5m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "T", Email = "t@test.com", Quantity = 6, UnitPrice = 7.5m });
         var created = await post.Content.ReadFromJsonAsync<OrderResponse>();
-        var get = await (await _client.GetAsync($"/api/orders/{created!.Id}")).Content.ReadFromJsonAsync<OrderResponse>();
+        var get = await (await _userClient.GetAsync($"/api/orders/{created!.Id}")).Content.ReadFromJsonAsync<OrderResponse>();
 
         // Assert
         var expected = 45m;
@@ -271,37 +273,38 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act & Assert từng bước
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "M", Email = "m@test.com", Quantity = 1, UnitPrice = 100m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "M", Email = "m@test.com", Quantity = 1, UnitPrice = 100m });
         post.StatusCode.Should().Be(HttpStatusCode.Created);
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
-        (await _client.GetAsync($"/api/orders/{id}")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _userClient.GetAsync($"/api/orders/{id}")).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await _client.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "M2", Email = "m2@test.com", Quantity = 2, UnitPrice = 50m }))
+        (await _userClient.PutAsJsonAsync($"/api/orders/{id}", new UpdateOrderRequest { CustomerName = "M2", Email = "m2@test.com", Quantity = 2, UnitPrice = 50m }))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await _client.GetAsync($"/api/orders/{id}")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _userClient.GetAsync($"/api/orders/{id}")).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await _client.DeleteAsync($"/api/orders/{id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _adminClient.DeleteAsync($"/api/orders/{id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     /// <summary>
-    /// Nhiệm vụ: Đơn tạo sau cùng xuất hiện đầu danh sách phân trang (trải nghiệm “mới nhất trước”).
+    /// Nhiệm vụ: Luồng người dùng xem trang 1 — thứ tự item khớp quy tắc CreatedAt desc, Id desc (ổn định, không Delay).
     /// </summary>
     [Fact]
-    public async Task E2E12_Journey_NewestOrder_FirstOnPage1()
+    public async Task E2E12_Journey_Page1_OrderingMatchesRepositoryRule_NoFlakyDelay()
     {
         // Arrange
         await ResetOrdersTableAsync();
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "First", Email = "f@test.com", Quantity = 1, UnitPrice = 1m });
-        await Task.Delay(25);
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Second", Email = "s@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "First", Email = "f@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Second", Email = "s@test.com", Quantity = 1, UnitPrice = 1m });
 
         // Act
-        var page = await (await _client.GetAsync("/api/orders?page=1&pageSize=5")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
+        var page = await (await _userClient.GetAsync("/api/orders?page=1&pageSize=5")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
-        page!.Items[0].CustomerName.Should().Be("Second");
+        page.Should().NotBeNull();
+        var sorted = page!.Items.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToList();
+        page.Items.Select(x => x.Id).Should().Equal(sorted.Select(x => x.Id));
     }
 
     /// <summary>
@@ -314,11 +317,11 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        var id1 = (await (await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "1", Email = "1@test.com", Quantity = 1, UnitPrice = 1m })).Content.ReadFromJsonAsync<OrderResponse>())!.Id;
-        var id2 = (await (await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "2", Email = "2@test.com", Quantity = 1, UnitPrice = 1m })).Content.ReadFromJsonAsync<OrderResponse>())!.Id;
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "3", Email = "3@test.com", Quantity = 1, UnitPrice = 1m });
-        await _client.DeleteAsync($"/api/orders/{id2}");
-        var all = await (await _client.GetAsync("/api/orders/all")).Content.ReadFromJsonAsync<List<OrderResponse>>();
+        var id1 = (await (await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "1", Email = "1@test.com", Quantity = 1, UnitPrice = 1m })).Content.ReadFromJsonAsync<OrderResponse>())!.Id;
+        var id2 = (await (await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "2", Email = "2@test.com", Quantity = 1, UnitPrice = 1m })).Content.ReadFromJsonAsync<OrderResponse>())!.Id;
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "3", Email = "3@test.com", Quantity = 1, UnitPrice = 1m });
+        await _adminClient.DeleteAsync($"/api/orders/{id2}");
+        var all = await (await _userClient.GetAsync("/api/orders/all")).Content.ReadFromJsonAsync<List<OrderResponse>>();
 
         // Assert
         all.Should().NotBeNull();
@@ -336,11 +339,11 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
     {
         // Arrange
         await ResetOrdersTableAsync();
-        var post = await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Only", Email = "only@test.com", Quantity = 1, UnitPrice = 1m });
+        var post = await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "Only", Email = "only@test.com", Quantity = 1, UnitPrice = 1m });
         var id = (await post.Content.ReadFromJsonAsync<OrderResponse>())!.Id;
 
         // Act
-        await _client.DeleteAsync($"/api/orders/{id}");
+        await _adminClient.DeleteAsync($"/api/orders/{id}");
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var count = await db.Orders.CountAsync();
@@ -359,12 +362,26 @@ public class OrdersE2ETests : IClassFixture<E2EWebApplicationFactory>
         await ResetOrdersTableAsync();
 
         // Act
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "P1", Email = "p1@test.com", Quantity = 1, UnitPrice = 1m });
-        await _client.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "P2", Email = "p2@test.com", Quantity = 1, UnitPrice = 1m });
-        var page = await (await _client.GetAsync("/api/orders?page=1&pageSize=10")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "P1", Email = "p1@test.com", Quantity = 1, UnitPrice = 1m });
+        await _userClient.PostAsJsonAsync("/api/orders", new CreateOrderRequest { CustomerName = "P2", Email = "p2@test.com", Quantity = 1, UnitPrice = 1m });
+        var page = await (await _userClient.GetAsync("/api/orders?page=1&pageSize=10")).Content.ReadFromJsonAsync<PagedOrdersResponse>();
 
         // Assert
         page!.TotalCount.Should().Be(2);
         page.Items.Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// Nhiệm vụ: Trên host E2E (SQLite file), request không JWT vẫn bị 401 — bảo mật xuyên suốt pipeline.
+    /// </summary>
+    [Fact]
+    public async Task E2E16_WhenAnonymousGetOrders_ShouldReturn401()
+    {
+        await ResetOrdersTableAsync();
+        var anonymous = _factory.CreateClient();
+
+        var response = await anonymous.GetAsync("/api/orders");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

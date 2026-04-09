@@ -1,8 +1,10 @@
+using AutoMapper;
 using FluentAssertions;
 using Moq;
 using OrderTestingLab.Dtos;
 using OrderTestingLab.Entities;
 using OrderTestingLab.Interfaces;
+using OrderTestingLab.Mapping;
 using OrderTestingLab.Services;
 
 namespace OrderTestingLab.UnitTests;
@@ -46,7 +48,7 @@ public class OrderServiceTests
     {
         // Arrange — Mock repository + service; request có khoảng trắng quanh tên.
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
         var request = new CreateOrderRequest { CustomerName = "  A  ", Email = "a@test.com", Quantity = 1, UnitPrice = 1m };
 
         // Act — Gọi tạo đơn.
@@ -64,7 +66,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.CreateAsync(new CreateOrderRequest { CustomerName = "A", Email = "  A@Test.COM ", Quantity = 1, UnitPrice = 1m });
@@ -81,7 +83,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.CreateAsync(new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 4, UnitPrice = 2.5m });
@@ -98,7 +100,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.CreateAsync(new CreateOrderRequest { CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 5m });
@@ -115,7 +117,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetByIdAsync(Guid.NewGuid());
@@ -143,7 +145,7 @@ public class OrderServiceTests
             TotalAmount = 6m,
             CreatedAt = new DateTime(2024, 1, 2, 0, 0, 0, DateTimeKind.Utc)
         });
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetByIdAsync(id);
@@ -162,7 +164,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetAllAsync();
@@ -181,7 +183,7 @@ public class OrderServiceTests
         var mock = CreateDefaultRepositoryMock();
         var o1 = new Order { Id = Guid.NewGuid(), CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1, TotalAmount = 1, CreatedAt = DateTime.UtcNow };
         mock.Setup(r => r.GetAllOrderedByCreatedAtDescAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new[] { o1 });
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetAllAsync();
@@ -201,7 +203,7 @@ public class OrderServiceTests
         var mock = CreateDefaultRepositoryMock();
         var o1 = new Order { Id = Guid.NewGuid(), CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1, TotalAmount = 1, CreatedAt = DateTime.UtcNow };
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(0, 20, It.IsAny<CancellationToken>())).ReturnsAsync((new[] { o1 }, 1));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 1, PageSize = 20 });
@@ -222,7 +224,7 @@ public class OrderServiceTests
         // Arrange
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(10, 10, It.IsAny<CancellationToken>())).ReturnsAsync((Array.Empty<Order>(), 25));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 2, PageSize = 10 });
@@ -242,7 +244,7 @@ public class OrderServiceTests
         // Arrange
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(0, 20, It.IsAny<CancellationToken>())).ReturnsAsync((Array.Empty<Order>(), 0));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 0, PageSize = 20 });
@@ -261,7 +263,7 @@ public class OrderServiceTests
         // Arrange
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(0, 100, It.IsAny<CancellationToken>())).ReturnsAsync((Array.Empty<Order>(), 0));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 1, PageSize = 500 });
@@ -279,7 +281,7 @@ public class OrderServiceTests
         // Arrange
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(0, 1, It.IsAny<CancellationToken>())).ReturnsAsync((Array.Empty<Order>(), 0));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 1, PageSize = 0 });
@@ -296,7 +298,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.UpdateAsync(Guid.NewGuid(), new UpdateOrderRequest { CustomerName = "X", Email = "x@test.com", Quantity = 1, UnitPrice = 1 });
@@ -325,7 +327,7 @@ public class OrderServiceTests
             TotalAmount = 10m,
             CreatedAt = DateTime.UtcNow
         });
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.UpdateAsync(id, new UpdateOrderRequest { CustomerName = " New ", Email = " NEW@Test.com ", Quantity = 2, UnitPrice = 5m });
@@ -350,7 +352,7 @@ public class OrderServiceTests
         {
             Id = id, CustomerName = "A", Email = "a@test.com", Quantity = 3, UnitPrice = 4m, TotalAmount = 12m, CreatedAt = DateTime.UtcNow
         });
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
         mock.Invocations.Clear();
 
         // Act
@@ -368,7 +370,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var ok = await sut.DeleteAsync(Guid.NewGuid());
@@ -387,7 +389,7 @@ public class OrderServiceTests
         var id = Guid.NewGuid();
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.DeleteAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var ok = await sut.DeleteAsync(id);
@@ -404,7 +406,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.CreateAsync(new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1 });
@@ -421,7 +423,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.CreateAsync(new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1 });
@@ -439,7 +441,7 @@ public class OrderServiceTests
         // Arrange
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(0, 3, It.IsAny<CancellationToken>())).ReturnsAsync((Array.Empty<Order>(), 10));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 1, PageSize = 3 });
@@ -462,7 +464,7 @@ public class OrderServiceTests
             new Order { Id = Guid.NewGuid(), CustomerName = "B", Email = "b@test.com", Quantity = 1, UnitPrice = 1, TotalAmount = 1, CreatedAt = DateTime.UtcNow }
         };
         mock.Setup(r => r.GetAllOrderedByCreatedAtDescAsync(It.IsAny<CancellationToken>())).ReturnsAsync(list);
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetAllAsync();
@@ -485,7 +487,7 @@ public class OrderServiceTests
         {
             Id = id, CustomerName = "X", Email = "x@test.com", Quantity = 1, UnitPrice = 1, TotalAmount = 1, CreatedAt = DateTime.UtcNow
         });
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.UpdateAsync(id, new UpdateOrderRequest { CustomerName = "  Y  ", Email = "  Y@Z.COM ", Quantity = 1, UnitPrice = 1 });
@@ -503,7 +505,7 @@ public class OrderServiceTests
         // Arrange
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(100, 10, It.IsAny<CancellationToken>())).ReturnsAsync((Array.Empty<Order>(), 5));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 11, PageSize = 10 });
@@ -533,7 +535,7 @@ public class OrderServiceTests
             TotalAmount = 14m,
             CreatedAt = created
         });
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetByIdAsync(id);
@@ -552,7 +554,7 @@ public class OrderServiceTests
     {
         // Arrange
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.CreateAsync(new CreateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 10, UnitPrice = 0.5m });
@@ -570,7 +572,7 @@ public class OrderServiceTests
         // Arrange
         var id = Guid.NewGuid();
         var mock = CreateDefaultRepositoryMock();
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.DeleteAsync(id);
@@ -589,7 +591,7 @@ public class OrderServiceTests
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(0, OrderQueryParameters.DefaultPageSize, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Array.Empty<Order>(), 0));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.GetPagedAsync(new OrderQueryParameters());
@@ -612,7 +614,7 @@ public class OrderServiceTests
         {
             Id = id, CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1, TotalAmount = 1, CreatedAt = DateTime.UtcNow
         });
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         await sut.UpdateAsync(id, new UpdateOrderRequest { CustomerName = "A", Email = "a@test.com", Quantity = 1, UnitPrice = 1 });
@@ -630,12 +632,34 @@ public class OrderServiceTests
         // Arrange
         var mock = CreateDefaultRepositoryMock();
         mock.Setup(r => r.GetPagedOrderedByCreatedAtDescAsync(0, 1, It.IsAny<CancellationToken>())).ReturnsAsync((Array.Empty<Order>(), 0));
-        var sut = new OrderService(mock.Object);
+        var sut = new OrderService(mock.Object, CreateMapper());
 
         // Act
         var res = await sut.GetPagedAsync(new OrderQueryParameters { Page = 1, PageSize = -5 });
 
         // Assert
         res.PageSize.Should().Be(1);
+    }
+
+    /// <summary>
+    /// Nhiệm vụ: CustomerName chỉ khoảng trắng → sau trim là chuỗi rỗng xuống repository (hành vi service; validation DTO tách biệt).
+    /// </summary>
+    [Fact]
+    public async Task US31_CreateAsync_WhenCustomerNameOnlyWhitespace_PassesEmptyStringToRepository()
+    {
+        var mock = CreateDefaultRepositoryMock();
+        var sut = new OrderService(mock.Object, CreateMapper());
+
+        await sut.CreateAsync(new CreateOrderRequest { CustomerName = "   ", Email = "a@test.com", Quantity = 1, UnitPrice = 1m });
+
+        mock.Verify(r => r.AddAsync(It.Is<Order>(o => o.CustomerName == string.Empty), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>Mapper thật (cùng profile API) cho unit test service — không mock IMapper để bắt lỗi cấu hình map.</summary>
+    private static IMapper CreateMapper()
+    {
+        var cfg = new MapperConfiguration(c => c.AddProfile<OrderMappingProfile>());
+        cfg.AssertConfigurationIsValid();
+        return cfg.CreateMapper();
     }
 }

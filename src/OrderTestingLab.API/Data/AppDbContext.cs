@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OrderTestingLab.Entities;
 
-namespace OrderTestingLab.Persistence;
+namespace OrderTestingLab.Data;
 
 /// <summary>
 /// DbContext EF Core — map bảng Orders.

@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OrderTestingLab.API\OrderTestingLab.API.csproj" />
+    <ProjectReference Include="..\OrderTestingLab.Testing.Common\OrderTestingLab.Testing.Common.csproj" />
   </ItemGroup>
 
 </Project>

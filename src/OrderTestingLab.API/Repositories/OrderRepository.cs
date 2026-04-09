@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using OrderTestingLab.Entities;
 using OrderTestingLab.Interfaces;
-using OrderTestingLab.Persistence;
+using OrderTestingLab.Data;
 
 namespace OrderTestingLab.Repositories;
 
@@ -35,6 +35,7 @@ public class OrderRepository : IOrderRepository
         return await _context.Orders
             .AsNoTracking()
             .OrderByDescending(o => o.CreatedAt)
+            .ThenByDescending(o => o.Id)
             .ToListAsync(cancellationToken);
     }
 
@@ -44,6 +45,7 @@ public class OrderRepository : IOrderRepository
         var total = await baseQuery.CountAsync(cancellationToken);
         var items = await baseQuery
             .OrderByDescending(o => o.CreatedAt)
+            .ThenByDescending(o => o.Id)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);

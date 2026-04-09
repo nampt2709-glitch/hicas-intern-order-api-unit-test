@@ -9,11 +9,14 @@ using OrderTestingLab.Interfaces;
 namespace OrderTestingLab.UnitTests;
 
 /// <summary>
-/// Unit test cho <see cref="OrdersController"/> — mock <see cref="IOrderService"/> và <see cref="IUrlHelper"/> (CreatedAtAction).
+/// Mục đích: Kiểm tra <see cref="OrdersController"/> qua mock <see cref="IOrderService"/> (không DB, không HTTP host).
 /// </summary>
 /// <remarks>
-/// <para><b>F.I.R.S.T</b>: nhanh, độc lập (mock cố định kịch bản), lặp lại ổn định, tự assert, bám hành vi HTTP/controller.</para>
-/// <para>Mỗi test có <b>Arrange – Act – Assert</b> được ghi rõ trong thân method.</para>
+/// <para><b>Tầng</b>: Unit — chỉ controller + mock service.</para>
+/// <para><b>F.I.R.S.T</b>: Fast, Independent, Repeatable, Self-validating, Timely (mapping status code → IActionResult).</para>
+/// <para><b>3A</b>: Mỗi test ghi Arrange–Act–Assert trong thân method.</para>
+/// <para>Vì sao ở Unit: cô lập hành vi controller khỏi EF/JWT.</para>
+/// <para>Mock IUrlHelper (CreatedAtAction) khi cần.</para>
 /// </remarks>
 public class OrdersControllerTests
 {
@@ -416,5 +419,26 @@ public class OrdersControllerTests
 
         // Assert
         result.StatusCode.Should().Be(204);
+    }
+
+    /// <summary>
+    /// Nhiệm vụ: CreatedAtAction phải mang HTTP 201 Created (REST tạo tài nguyên).
+    /// </summary>
+    [Fact]
+    public async Task UC21_Create_ReturnsStatusCode201_OnCreatedAtActionResult()
+    {
+        var id = Guid.NewGuid();
+        var sm = new Mock<IOrderService>();
+        sm.Setup(s => s.CreateAsync(It.IsAny<CreateOrderRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrderResponse { Id = id, CustomerName = "J", Email = "j@test.com", Quantity = 1, UnitPrice = 1, TotalAmount = 1, CreatedAt = DateTime.UtcNow });
+        var c = new OrdersController(sm.Object);
+        var mockUrl = new Mock<IUrlHelper>();
+        mockUrl.Setup(u => u.Action(It.IsAny<UrlActionContext>())).Returns("http://localhost/x");
+        c.Url = mockUrl.Object;
+
+        var result = await c.Create(new CreateOrderRequest { CustomerName = "J", Email = "j@test.com", Quantity = 1, UnitPrice = 1 }, CancellationToken.None);
+
+        var created = (CreatedAtActionResult)result.Result!;
+        created.StatusCode.Should().Be(201);
     }
 }
