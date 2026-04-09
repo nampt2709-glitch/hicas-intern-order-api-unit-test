@@ -1,0 +1,23 @@
+## .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+[Dd]ebug/
+[Rr]elease/
+*.db
+*.db-shm
+*.db-wal
+.vs/
+*.DotSettings.user
+TestResults/
+coverage*.json
+coverage*.xml
+*.log
+
+## OS
+Thumbs.db
+.DS_Store
