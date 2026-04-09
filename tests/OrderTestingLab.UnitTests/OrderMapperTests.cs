@@ -12,7 +12,7 @@ namespace OrderTestingLab.UnitTests;
 /// F.I.R.S.T: Fast, Independent, Repeatable, Self-validating, Timely (bắt regress map).
 /// Vì sao ở Unit: chỉ cần profile + entity giả lập, không cần pipeline ASP.NET.
 /// </summary>
-public class AutoMapperOrderMappingTests
+public class OrderMapperTests
 {
     private static IMapper CreateSut()
     {
@@ -27,7 +27,7 @@ public class AutoMapperOrderMappingTests
     /// F.I.R.S.T: Self-validating (cấu hình tự kiểm).
     /// </summary>
     [Fact]
-    public void OrderMappingProfile_WhenConfigurationBuilt_ShouldPassAssertConfigurationIsValid()
+    public void UM01_OrderMappingProfile_WhenConfigurationBuilt_ShouldPassAssertConfigurationIsValid()
     {
         // Arrange
         var cfg = new MapperConfiguration(c => c.AddProfile<OrderMappingProfile>());
@@ -45,7 +45,7 @@ public class AutoMapperOrderMappingTests
     /// F.I.R.S.T: Fast, Repeatable (deterministic entity).
     /// </summary>
     [Fact]
-    public void Map_WhenOrderHasAllFields_ShouldMapToOrderResponseWithoutLoss()
+    public void UM02_Map_WhenOrderHasAllFields_ShouldMapToOrderResponseWithoutLoss()
     {
         // Arrange
         var mapper = CreateSut();
